@@ -40,13 +40,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.Collator
@@ -66,6 +67,8 @@ class MainActivity : ComponentActivity() {
     private var pinned by mutableStateOf<Set<String>>(emptySet())
     private var drawerOpen by mutableStateOf(false)
     private var isDefaultHome by mutableStateOf(false)
+    private lateinit var widgets: HomeWidgets
+
     private val updates by lazy { LauncherUpdates(this) }
     private var availableUpdate by mutableStateOf<UpdateRelease?>(null)
     private var preparedUpdate by mutableStateOf<android.net.Uri?>(null)
@@ -82,7 +85,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        widgets = HomeWidgets(this, savedInstanceState)
         enableEdgeToEdge(SystemBarStyle.dark(0), SystemBarStyle.dark(0))
+        hideStatusBar()
         pinned = preferences.getStringSet("pinned", emptySet()).orEmpty().toSet()
         ContextCompat.registerReceiver(
             this,
@@ -99,6 +104,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = launcherColors) {
                 Launcher(
+                    widgets = widgets,
                     apps = apps,
                     pinned = pinned,
                     drawerOpen = drawerOpen,
@@ -118,6 +124,39 @@ class MainActivity : ComponentActivity() {
 
                 )
             }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        widgets.start()
+    }
+
+    override fun onStop() {
+        widgets.stop()
+        super.onStop()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        widgets.save(outState)
+        super.onSaveInstanceState(outState)
+    }
+
+    @Deprecated("AppWidgetHost requires a request code for provider configuration")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        widgets.configurationResult(requestCode, resultCode)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideStatusBar()
+    }
+
+    private fun hideStatusBar() {
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.statusBars())
         }
     }
 
@@ -266,12 +305,13 @@ private val launcherColors = darkColorScheme(
 
 private val glassShape = RoundedCornerShape(24.dp)
 
-private fun Modifier.glass(): Modifier = clip(glassShape)
+internal fun Modifier.glass(): Modifier = clip(glassShape)
     .background(Brush.linearGradient(listOf(Color(0x385FE4DF), Color(0x1663A5CE), Color(0x30599DD0))))
     .border(1.dp, Brush.verticalGradient(listOf(Color(0x70D8FFFF), Color(0x224CBCDF))), glassShape)
 
 @Composable
 private fun Launcher(
+    widgets: HomeWidgets,
     apps: List<LauncherApp>,
     pinned: Set<String>,
     drawerOpen: Boolean,
@@ -302,6 +342,7 @@ private fun Launcher(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        LauncherStatusBar()
         if (drawerOpen) {
             OutlinedTextField(
                 value = query,
@@ -345,6 +386,8 @@ private fun Launcher(
             }
         }
 
+        if (!drawerOpen) WidgetPanel(widgets)
+
         Box(Modifier.fillMaxWidth().glass().padding(8.dp)) {
             FilledTonalButton(
                 onClick = { setDrawer(!drawerOpen) },
@@ -377,27 +420,12 @@ private fun Launcher(
 @Composable
 private fun ClockPanel() {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val now by produceState(Date()) {
-        while (true) {
-            val timestamp = System.currentTimeMillis()
-            value = Date(timestamp)
-            delay(60_000L - timestamp % 60_000L)
-        }
-    }
-
     Column(
         Modifier.fillMaxWidth().glass().padding(horizontal = 20.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text("xDroid", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace)
-        Text(
-            DateFormat.getTimeFormat(context).format(now),
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 42.sp,
-            lineHeight = 48.sp,
-            fontFamily = FontFamily.Monospace,
-        )
-        Text(DateFormat.getLongDateFormat(context).format(now), color = Color(0xFFC1D8DF))
+        Text(DateFormat.getLongDateFormat(context).format(Date()), color = Color(0xFFC1D8DF))
     }
 }
 

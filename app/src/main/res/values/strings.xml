@@ -18,4 +18,16 @@
     <string name="update_downloading">Скачиваем обновление…</string>
     <string name="update_install">Установить обновление</string>
     <string name="update_allow">Разрешите установку обновлений для xDroid в настройках Android, затем снова нажмите «Установить обновление».</string>
+    <string name="widgets">Виджеты</string>
+    <string name="widget_add">Добавить</string>
+    <string name="widget_change">Заменить</string>
+    <string name="widget_remove">Убрать</string>
+    <string name="widget_pick">Выберите виджет</string>
+    <string name="widget_empty">Доступных виджетов нет</string>
+    <string name="widget_failed">Не удалось добавить виджет</string>
+    <string name="status_wifi">Wi‑Fi</string>
+    <string name="status_cellular">Моб. сеть</string>
+    <string name="status_connected">Сеть</string>
+    <string name="status_offline">Нет сети</string>
+    <string name="status_battery">%1$d%%</string>
 </resources>
