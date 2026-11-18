@@ -128,10 +128,10 @@ internal class HomeWidgets(private val activity: ComponentActivity, state: Bundl
 }
 
 @Composable
-internal fun WidgetPanel(widgets: HomeWidgets) {
-    var providers by remember { mutableStateOf<List<AppWidgetProviderInfo>?>(null) }
+internal fun WidgetPanel(widgets: HomeWidgets, openPicker: () -> Unit) {
     val id = widgets.widgetId
     val info = widgets.info()
+    if (id == invalidId) return
 
     Column(Modifier.fillMaxWidth().glass().padding(horizontal = 8.dp, vertical = 2.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -141,10 +141,8 @@ internal fun WidgetPanel(widgets: HomeWidgets) {
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            if (id != invalidId) {
-                TextButton(onClick = widgets::remove) { Text(stringResource(R.string.widget_remove)) }
-            }
-            TextButton(onClick = { providers = widgets.providers() }) {
+            TextButton(onClick = widgets::remove) { Text(stringResource(R.string.widget_remove)) }
+            TextButton(onClick = openPicker) {
                 Text(stringResource(if (info == null) R.string.widget_add else R.string.widget_change))
             }
         }
@@ -164,30 +162,33 @@ internal fun WidgetPanel(widgets: HomeWidgets) {
         }
     }
 
-    providers?.let { available ->
-        AlertDialog(
-            onDismissRequest = { providers = null },
-            title = { Text(stringResource(R.string.widget_pick)) },
-            text = {
-                if (available.isEmpty()) {
-                    Text(stringResource(R.string.widget_empty))
-                } else {
-                    LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                        items(available) { provider ->
-                            TextButton(
-                                onClick = {
-                                    providers = null
-                                    widgets.add(provider)
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text(widgets.label(provider)) }
-                        }
+}
+
+@Composable
+internal fun WidgetPicker(widgets: HomeWidgets, onDismiss: () -> Unit) {
+    val available = remember(widgets) { widgets.providers() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.widget_pick)) },
+        text = {
+            if (available.isEmpty()) {
+                Text(stringResource(R.string.widget_empty))
+            } else {
+                LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                    items(available) { provider ->
+                        TextButton(
+                            onClick = {
+                                onDismiss()
+                                widgets.add(provider)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(widgets.label(provider)) }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { providers = null }) { Text(stringResource(R.string.cancel)) }
-            },
-        )
-    }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
 }

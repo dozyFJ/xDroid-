@@ -327,11 +327,14 @@ private fun Launcher(
 ) {
     var query by remember(drawerOpen) { mutableStateOf("") }
     var selected by remember(drawerOpen) { mutableStateOf<LauncherApp?>(null) }
+    var widgetPickerOpen by remember(drawerOpen) { mutableStateOf(false) }
+    val pinnedApps = remember(apps, pinned) { apps.filter { it.key in pinned } }
+    val dockApps = pinnedApps.take(3)
     BackHandler(drawerOpen) { setDrawer(false) }
 
-    val visibleApps = remember(apps, pinned, drawerOpen, query) {
+    val visibleApps = remember(apps, pinnedApps, drawerOpen, query) {
         if (drawerOpen) apps.filter { it.label.contains(query.trim(), ignoreCase = true) }
-        else apps.filter { it.key in pinned }
+        else pinnedApps.drop(dockApps.size)
     }
 
     Column(
@@ -342,7 +345,6 @@ private fun Launcher(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        LauncherStatusBar()
         if (drawerOpen) {
             OutlinedTextField(
                 value = query,
@@ -354,7 +356,16 @@ private fun Launcher(
             )
         } else {
             ClockPanel()
-            TextButton(onClick = updateAction, enabled = !updateBusy) { Text(updateLabel) }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    onClick = updateAction,
+                    enabled = !updateBusy,
+                    modifier = Modifier.weight(1f, fill = false),
+                ) { Text(updateLabel) }
+                TextButton(onClick = { widgetPickerOpen = true }) {
+                    Text(stringResource(R.string.widgets))
+                }
+            }
             updateMessage?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
             if (!isDefaultHome) {
                 OutlinedButton(onClick = selectHome, modifier = Modifier.fillMaxWidth()) {
@@ -365,7 +376,7 @@ private fun Launcher(
 
         if (visibleApps.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(
+                if (drawerOpen || pinnedApps.isEmpty()) Text(
                     stringResource(if (drawerOpen) R.string.no_results else R.string.pin_hint),
                     textAlign = TextAlign.Center,
                     color = Color(0xFFBDCCD5),
@@ -386,17 +397,35 @@ private fun Launcher(
             }
         }
 
-        if (!drawerOpen) WidgetPanel(widgets)
+        if (!drawerOpen) WidgetPanel(widgets) { widgetPickerOpen = true }
 
-        Box(Modifier.fillMaxWidth().glass().padding(8.dp)) {
+        LauncherStatusBar()
+        Row(
+            Modifier.fillMaxWidth().glass().padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (!drawerOpen) {
+                dockApps.forEach { app ->
+                    AppTile(
+                        app,
+                        { openApp(app) },
+                        { selected = app },
+                        modifier = Modifier.weight(1f),
+                        compact = true,
+                    )
+                }
+            }
             FilledTonalButton(
                 onClick = { setDrawer(!drawerOpen) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.weight(if (dockApps.isEmpty() || drawerOpen) 1f else 2f),
             ) {
                 Text(stringResource(if (drawerOpen) R.string.home else R.string.apps))
             }
         }
     }
+
+    if (widgetPickerOpen) WidgetPicker(widgets) { widgetPickerOpen = false }
 
     selected?.let { app ->
         AlertDialog(
@@ -431,19 +460,29 @@ private fun ClockPanel() {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AppTile(app: LauncherApp, open: () -> Unit, pin: () -> Unit) {
+private fun AppTile(
+    app: LauncherApp,
+    open: () -> Unit,
+    pin: () -> Unit,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
     Column(
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .combinedClickable(onClick = open, onLongClick = pin)
-            .padding(vertical = 8.dp, horizontal = 2.dp),
+            .padding(vertical = if (compact) 4.dp else 8.dp, horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box(Modifier.size(58.dp).glass(), contentAlignment = Alignment.Center) {
-            Image(app.icon, contentDescription = null, modifier = Modifier.size(44.dp))
+        Box(Modifier.size(if (compact) 44.dp else 58.dp).glass(), contentAlignment = Alignment.Center) {
+            Image(
+                app.icon,
+                contentDescription = if (compact) app.label else null,
+                modifier = Modifier.size(if (compact) 32.dp else 44.dp),
+            )
         }
-        Text(
+        if (!compact) Text(
             app.label,
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.labelSmall,
