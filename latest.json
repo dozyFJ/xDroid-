@@ -1,7 +1,7 @@
 {
-  "versionCode": 2,
-  "versionName": "0.1.1",
-  "url": "https://raw.githubusercontent.com/dozyFJ/xDroid-/ota/releases/xDroid-0.1.1.apk",
-  "sha256": "0762d2169fdd9a4a4cf538123891ecaedc5566762dd6e24512c48211f4a883a8",
-  "sourceCommit": "422ce4f63655dddb879b7ebad261ec99e0151800"
+  "versionCode": 3,
+  "versionName": "0.1.2",
+  "url": "https://raw.githubusercontent.com/dozyFJ/xDroid-/ota/releases/xDroid-0.1.2.apk",
+  "sha256": "2f147a6786ec4126a4c3b611841208e2e9fc05f9c6206c0b3f417268e10f4ba2",
+  "sourceCommit": "f2316fc70f87a49af893e54fc86474dbb6291ae9"
 }
