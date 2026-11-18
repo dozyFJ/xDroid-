@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">xDroid</string>
+    <string name="apps">Все приложения</string>
+    <string name="search">Поиск приложений</string>
+    <string name="home">Рабочий стол</string>
+    <string name="default_home">Сделать лаунчером по умолчанию</string>
+    <string name="pin">Закрепить на рабочем столе</string>
+    <string name="unpin">Убрать с рабочего стола</string>
+    <string name="pin_hint">Удерживайте значок в списке приложений, чтобы закрепить его здесь.</string>
+    <string name="cancel">Отмена</string>
+    <string name="no_results">Приложения не найдены</string>
+    <string name="unavailable">Приложение недоступно</string>
+</resources>
