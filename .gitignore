@@ -3,3 +3,6 @@
 **/build/
 local.properties
 *.iml
+
+.kotlin/
+/xDroid-*-debug.apk

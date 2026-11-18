@@ -66,6 +66,12 @@ class MainActivity : ComponentActivity() {
     private var pinned by mutableStateOf<Set<String>>(emptySet())
     private var drawerOpen by mutableStateOf(false)
     private var isDefaultHome by mutableStateOf(false)
+    private val updates by lazy { LauncherUpdates(this) }
+    private var availableUpdate by mutableStateOf<UpdateRelease?>(null)
+    private var preparedUpdate by mutableStateOf<android.net.Uri?>(null)
+    private var updateMessage by mutableStateOf<Int?>(null)
+    private var updateJob: Job? = null
+
     private var refreshJob: Job? = null
     private val roleRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         updateHomeStatus()
@@ -89,6 +95,7 @@ class MainActivity : ComponentActivity() {
             },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
+        checkUpdates(showResult = false)
         setContent {
             MaterialTheme(colorScheme = launcherColors) {
                 Launcher(
@@ -100,6 +107,15 @@ class MainActivity : ComponentActivity() {
                     openApp = ::openApp,
                     togglePin = ::togglePin,
                     selectHome = ::selectHome,
+                    updateAction = ::updateAction,
+                    updateLabel = when {
+                        preparedUpdate != null -> stringResource(R.string.update_install)
+                        else -> availableUpdate?.let { stringResource(R.string.update_available, it.versionName) }
+                            ?: stringResource(R.string.updates)
+                    },
+                    updateBusy = updateMessage == R.string.update_checking || updateMessage == R.string.update_downloading,
+                    updateMessage = updateMessage,
+
                 )
             }
         }
@@ -120,6 +136,61 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         unregisterReceiver(packageChanges)
         super.onDestroy()
+    }
+
+    private fun checkUpdates(showResult: Boolean) {
+        if (updateJob?.isActive == true) return
+        if (showResult) updateMessage = R.string.update_checking
+        updateJob = lifecycleScope.launch {
+            try {
+                availableUpdate = updates.check()
+                updateMessage = if (showResult && availableUpdate == null) R.string.update_current else null
+            } catch (_: java.io.IOException) {
+                updateMessage = if (showResult) R.string.update_failed else null
+            }
+        }
+    }
+
+    private fun updateAction() {
+        preparedUpdate?.let {
+            installUpdate(it)
+            return
+        }
+        val release = availableUpdate
+        if (release == null) {
+            checkUpdates(showResult = true)
+            return
+        }
+        if (updateJob?.isActive == true) return
+        updateMessage = R.string.update_downloading
+        updateJob = lifecycleScope.launch {
+            try {
+                val uri = updates.download(release)
+                preparedUpdate = uri
+                installUpdate(uri)
+            } catch (_: java.io.IOException) {
+                updateMessage = R.string.update_failed
+            }
+        }
+    }
+
+    private fun installUpdate(uri: android.net.Uri) {
+        updateMessage = null
+        try {
+            if (!packageManager.canRequestPackageInstalls()) {
+                updateMessage = R.string.update_allow
+                startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:$packageName")))
+                return
+            }
+            startActivity(Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
+        } catch (_: ActivityNotFoundException) {
+            updateMessage = R.string.update_failed
+        } catch (_: SecurityException) {
+            updateMessage = R.string.update_failed
+        }
     }
 
     private fun refreshApps() {
@@ -209,6 +280,10 @@ private fun Launcher(
     openApp: (LauncherApp) -> Unit,
     togglePin: (LauncherApp) -> Unit,
     selectHome: () -> Unit,
+    updateAction: () -> Unit,
+    updateLabel: String,
+    updateBusy: Boolean,
+    updateMessage: Int?,
 ) {
     var query by remember(drawerOpen) { mutableStateOf("") }
     var selected by remember(drawerOpen) { mutableStateOf<LauncherApp?>(null) }
@@ -238,6 +313,8 @@ private fun Launcher(
             )
         } else {
             ClockPanel()
+            TextButton(onClick = updateAction, enabled = !updateBusy) { Text(updateLabel) }
+            updateMessage?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
             if (!isDefaultHome) {
                 OutlinedButton(onClick = selectHome, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.default_home))
