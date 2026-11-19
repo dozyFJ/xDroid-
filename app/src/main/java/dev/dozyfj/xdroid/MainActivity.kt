@@ -18,7 +18,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,11 +34,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -327,14 +335,14 @@ private fun Launcher(
 ) {
     var query by remember(drawerOpen) { mutableStateOf("") }
     var selected by remember(drawerOpen) { mutableStateOf<LauncherApp?>(null) }
-    var widgetPickerOpen by remember(drawerOpen) { mutableStateOf(false) }
+    var centerOpen by remember(drawerOpen) { mutableStateOf(false) }
     val pinnedApps = remember(apps, pinned) { apps.filter { it.key in pinned } }
     val dockApps = pinnedApps.take(3)
-    BackHandler(drawerOpen) { setDrawer(false) }
-
-    val visibleApps = remember(apps, pinnedApps, drawerOpen, query) {
-        if (drawerOpen) apps.filter { it.label.contains(query.trim(), ignoreCase = true) }
-        else pinnedApps.drop(dockApps.size)
+    val pages = remember(pinnedApps) { pinnedApps.drop(3).chunked(12) }
+    val pager = rememberPagerState { pages.size.coerceAtLeast(1) }
+    val matches = remember(apps, query) { apps.filter { it.label.contains(query.trim(), ignoreCase = true) } }
+    BackHandler(drawerOpen || centerOpen) {
+        if (centerOpen) centerOpen = false else setDrawer(false)
     }
 
     Column(
@@ -345,87 +353,85 @@ private fun Launcher(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (drawerOpen) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                label = { Text(stringResource(R.string.search)) },
-                singleLine = true,
-                shape = glassShape,
-                modifier = Modifier.fillMaxWidth().glass(),
+        when {
+            centerOpen -> XDroidCenter(
+                widgets = widgets,
+                isDefaultHome = isDefaultHome,
+                selectHome = selectHome,
+                updateAction = updateAction,
+                updateLabel = updateLabel,
+                updateBusy = updateBusy,
+                updateMessage = updateMessage,
+                modifier = Modifier.weight(1f),
             )
-        } else {
-            ClockPanel()
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(
-                    onClick = updateAction,
-                    enabled = !updateBusy,
-                    modifier = Modifier.weight(1f, fill = false),
-                ) { Text(updateLabel) }
-                TextButton(onClick = { widgetPickerOpen = true }) {
-                    Text(stringResource(R.string.widgets))
-                }
-            }
-            updateMessage?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
-            if (!isDefaultHome) {
-                OutlinedButton(onClick = selectHome, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.default_home))
-                }
-            }
-        }
-
-        if (visibleApps.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                if (drawerOpen || pinnedApps.isEmpty()) Text(
-                    stringResource(if (drawerOpen) R.string.no_results else R.string.pin_hint),
-                    textAlign = TextAlign.Center,
-                    color = Color(0xFFBDCCD5),
-                    modifier = Modifier.padding(16.dp),
+            drawerOpen -> {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text(stringResource(R.string.search)) },
+                    singleLine = true,
+                    shape = glassShape,
+                    modifier = Modifier.fillMaxWidth().glass(),
+                )
+                AppGrid(
+                    matches, openApp, { selected = it }, Modifier.weight(1f),
+                    emptyMessage = R.string.no_results,
                 )
             }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(76.dp),
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                items(visibleApps, key = { it.key }) { app ->
-                    AppTile(app, { openApp(app) }, { selected = app })
+            else -> {
+                ClockPanel()
+                HorizontalPager(state = pager, modifier = Modifier.weight(1f).fillMaxWidth()) { page ->
+                    AppGrid(
+                        pages.getOrNull(page).orEmpty(), openApp, { selected = it }, Modifier.fillMaxSize(),
+                        emptyMessage = R.string.pin_hint.takeIf { pinnedApps.isEmpty() },
+                    )
                 }
+                HomeWidget(widgets)
             }
         }
 
-        if (!drawerOpen) WidgetPanel(widgets) { widgetPickerOpen = true }
-
         LauncherStatusBar()
-        Row(
+        Column(
             Modifier.fillMaxWidth().glass().padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (!drawerOpen) {
-                dockApps.forEach { app ->
-                    AppTile(
-                        app,
-                        { openApp(app) },
-                        { selected = app },
-                        modifier = Modifier.weight(1f),
-                        compact = true,
-                    )
-                }
+            if (!drawerOpen && !centerOpen) {
+                val current = pager.currentPage.coerceIn(0, pager.pageCount - 1) + 1
+                val description = stringResource(R.string.page_description, current, pager.pageCount)
+                Text(
+                    stringResource(R.string.page_count, current, pager.pageCount),
+                    modifier = Modifier.semantics { contentDescription = description },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
-            FilledTonalButton(
-                onClick = { setDrawer(!drawerOpen) },
-                modifier = Modifier.weight(if (dockApps.isEmpty() || drawerOpen) 1f else 2f),
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(stringResource(if (drawerOpen) R.string.home else R.string.apps))
+                if (!drawerOpen && !centerOpen) {
+                    dockApps.forEach { app ->
+                        AppTile(app, { openApp(app) }, { selected = app }, Modifier.weight(1f), compact = true)
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                DockButton(
+                    label = stringResource(if (drawerOpen) R.string.home else R.string.apps),
+                    symbol = if (drawerOpen) DockSymbol.Home else DockSymbol.Apps,
+                    onClick = {
+                        setDrawer(!drawerOpen)
+                        centerOpen = false
+                    },
+                )
+                DockButton(
+                    label = stringResource(R.string.center),
+                    symbol = DockSymbol.Settings,
+                    onClick = { centerOpen = !centerOpen },
+                )
             }
         }
     }
-
-    if (widgetPickerOpen) WidgetPicker(widgets) { widgetPickerOpen = false }
 
     selected?.let { app ->
         AlertDialog(
@@ -443,6 +449,74 @@ private fun Launcher(
                 TextButton(onClick = { selected = null }) { Text(stringResource(R.string.cancel)) }
             },
         )
+    }
+}
+
+@Composable
+private fun AppGrid(
+    apps: List<LauncherApp>,
+    openApp: (LauncherApp) -> Unit,
+    selectApp: (LauncherApp) -> Unit,
+    modifier: Modifier,
+    emptyMessage: Int?,
+) {
+    if (apps.isEmpty()) {
+        Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            emptyMessage?.let {
+                Text(
+                    stringResource(it),
+                    textAlign = TextAlign.Center,
+                    color = Color(0xFFBDCCD5),
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+        }
+    } else {
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(76.dp),
+            modifier = modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            items(apps, key = { it.key }) { app ->
+                AppTile(app, { openApp(app) }, { selectApp(app) })
+            }
+        }
+    }
+}
+
+private enum class DockSymbol { Apps, Home, Settings }
+
+@Composable
+private fun DockButton(label: String, symbol: DockSymbol, onClick: () -> Unit) {
+    val color = MaterialTheme.colorScheme.onSecondaryContainer
+    FilledTonalIconButton(
+        onClick = onClick,
+        modifier = Modifier.size(48.dp).semantics { contentDescription = label },
+    ) {
+        Canvas(Modifier.size(24.dp)) {
+            val unit = size.width / 24
+            when (symbol) {
+                DockSymbol.Apps -> repeat(9) { index ->
+                    drawCircle(color, 1.65f * unit, Offset((5 + index % 3 * 7) * unit, (5 + index / 3 * 7) * unit))
+                }
+                DockSymbol.Home -> {
+                    drawLine(color, Offset(3 * unit, 11 * unit), Offset(12 * unit, 4 * unit), 2 * unit)
+                    drawLine(color, Offset(12 * unit, 4 * unit), Offset(21 * unit, 11 * unit), 2 * unit)
+                    drawRect(color, Offset(6 * unit, 11 * unit), androidx.compose.ui.geometry.Size(12 * unit, 9 * unit), style = Stroke(2 * unit))
+                }
+                DockSymbol.Settings -> {
+                    drawCircle(color, 7 * unit, style = Stroke(3 * unit))
+                    drawCircle(color, 2 * unit)
+                    repeat(8) { spoke ->
+                        rotate(spoke * 45f) {
+                            drawLine(color, Offset(center.x, 2 * unit), Offset(center.x, 6 * unit), 3 * unit)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

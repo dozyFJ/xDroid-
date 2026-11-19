@@ -128,67 +128,83 @@ internal class HomeWidgets(private val activity: ComponentActivity, state: Bundl
 }
 
 @Composable
-internal fun WidgetPanel(widgets: HomeWidgets, openPicker: () -> Unit) {
+internal fun HomeWidget(widgets: HomeWidgets) {
     val id = widgets.widgetId
-    val info = widgets.info()
-    if (id == invalidId) return
+    val info = widgets.info() ?: return
+    key(id) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(128.dp).glass()) {
+            val width = maxWidth.value.toInt()
+            val height = maxHeight.value.toInt()
+            AndroidView(
+                factory = { widgets.view(info) },
+                modifier = Modifier.fillMaxSize(),
+                update = { view -> view.updateAppWidgetSize(null, width, height, width, height) },
+            )
+        }
+    }
+}
 
-    Column(Modifier.fillMaxWidth().glass().padding(horizontal = 8.dp, vertical = 2.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+@Composable
+internal fun XDroidCenter(
+    widgets: HomeWidgets,
+    isDefaultHome: Boolean,
+    selectHome: () -> Unit,
+    updateAction: () -> Unit,
+    updateLabel: String,
+    updateBusy: Boolean,
+    updateMessage: Int?,
+    modifier: Modifier = Modifier,
+) {
+    val providers = remember(widgets) { widgets.providers() }
+    val current = widgets.info()
+    LazyColumn(
+        modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(bottom = 8.dp),
+    ) {
+        item {
             Text(
-                info?.let(widgets::label) ?: stringResource(R.string.widgets),
-                modifier = Modifier.weight(1f).padding(start = 8.dp),
-                style = MaterialTheme.typography.labelLarge,
+                stringResource(R.string.center),
+                modifier = Modifier.padding(vertical = 8.dp),
+                style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            TextButton(onClick = widgets::remove) { Text(stringResource(R.string.widget_remove)) }
-            TextButton(onClick = openPicker) {
-                Text(stringResource(if (info == null) R.string.widget_add else R.string.widget_change))
+        }
+        item {
+            Column(Modifier.fillMaxWidth().glass().padding(12.dp)) {
+                FilledTonalButton(onClick = updateAction, enabled = !updateBusy) { Text(updateLabel) }
+                updateMessage?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall) }
+                if (!isDefaultHome) {
+                    TextButton(onClick = selectHome) { Text(stringResource(R.string.default_home)) }
+                }
             }
         }
-
-        if (info != null) {
-            key(id) {
-                BoxWithConstraints(Modifier.fillMaxWidth().height(128.dp)) {
-                    val width = maxWidth.value.toInt()
-                    val height = maxHeight.value.toInt()
-                    AndroidView(
-                        factory = { widgets.view(info) },
-                        modifier = Modifier.fillMaxSize().padding(bottom = 4.dp),
-                        update = { view -> view.updateAppWidgetSize(null, width, height - 4, width, height - 4) },
-                    )
+        item {
+            Text(
+                stringResource(R.string.widget_catalog),
+                modifier = Modifier.padding(top = 10.dp),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        current?.let { info ->
+            item {
+                Row(Modifier.fillMaxWidth().glass().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(widgets.label(info), Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface)
+                    TextButton(onClick = widgets::remove) { Text(stringResource(R.string.widget_remove)) }
+                }
+            }
+        }
+        if (providers.isEmpty()) {
+            item { Text(stringResource(R.string.widget_empty), color = MaterialTheme.colorScheme.onSurface) }
+        }
+        items(providers) { provider ->
+            Row(Modifier.fillMaxWidth().glass().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(widgets.label(provider), Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface)
+                TextButton(onClick = { widgets.add(provider) }) {
+                    Text(stringResource(if (current == null) R.string.widget_add else R.string.widget_change))
                 }
             }
         }
     }
-
-}
-
-@Composable
-internal fun WidgetPicker(widgets: HomeWidgets, onDismiss: () -> Unit) {
-    val available = remember(widgets) { widgets.providers() }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.widget_pick)) },
-        text = {
-            if (available.isEmpty()) {
-                Text(stringResource(R.string.widget_empty))
-            } else {
-                LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                    items(available) { provider ->
-                        TextButton(
-                            onClick = {
-                                onDismiss()
-                                widgets.add(provider)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text(widgets.label(provider)) }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-        },
-    )
 }
